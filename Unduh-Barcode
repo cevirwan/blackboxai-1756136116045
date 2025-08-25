@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pengunduh Gambar Google Sheets</title>
+    <!-- Memuat Tailwind CSS untuk styling modern -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Memastikan font Inter digunakan untuk tampilan yang bersih -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <!-- Container utama aplikasi -->
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 w-full max-w-2xl transform transition-transform duration-300 hover:scale-[1.01] border border-gray-200 dark:border-gray-700">
+        <h1 class="text-3xl sm:text-4xl font-bold text-center mb-4">Pengunduh Gambar</h1>
+        <p class="text-center text-gray-600 dark:text-gray-400 mb-6">Masukkan URL Google Sheets Anda untuk mengunduh gambar.</p>
+
+        <!-- Form untuk input URL -->
+        <div class="mb-6">
+            <label for="sheetUrl" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">URL Google Sheets:</label>
+            <input type="url" id="sheetUrl" class="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors" placeholder="Contoh: https://docs.google.com/spreadsheets/d/1vNWh2ZX0ThWQtGuGAy1uQ4zbRrDFgFl9YKyFdpziFiY/edit" value="https://docs.google.com/spreadsheets/d/1vNWh2ZX0ThWQtGuGAy1uQ4zbRrDFgFl9YKyFdpziFiY/edit?usp=sharing">
+        </div>
+
+        <!-- Tombol untuk memuat gambar -->
+        <button id="loadBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg shadow-md transition-colors duration-300">
+            Muat Gambar
+        </button>
+
+        <!-- Area untuk pesan dan status -->
+        <div id="statusMessage" class="mt-4 text-sm text-center font-medium"></div>
+
+        <!-- Kolom pencarian baru, awalnya disembunyikan -->
+        <div id="searchContainer" class="hidden mt-6">
+            <label for="searchQuery" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Cari berdasarkan Nama:</label>
+            <input type="text" id="searchQuery" class="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors" placeholder="Masukkan nama untuk mencari...">
+        </div>
+
+        <!-- Container untuk daftar gambar dan tombol unduh -->
+        <div id="resultsContainer" class="hidden mt-6">
+            <h2 class="text-2xl font-semibold mb-4 text-center">Tautan Gambar Ditemukan</h2>
+            <ul id="imageList" class="space-y-3"></ul>
+            <button id="downloadAllBtn" class="mt-6 w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg shadow-md transition-colors duration-300">
+                Unduh Semua Gambar
+            </button>
+        </div>
+    </div>
+
+    <!-- Script JavaScript utama -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Mengambil elemen-elemen DOM
+            const sheetUrlInput = document.getElementById('sheetUrl');
+            const loadBtn = document.getElementById('loadBtn');
+            const statusMessage = document.getElementById('statusMessage');
+            const resultsContainer = document.getElementById('resultsContainer');
+            const imageList = document.getElementById('imageList');
+            const downloadAllBtn = document.getElementById('downloadAllBtn');
+            const searchContainer = document.getElementById('searchContainer');
+            const searchQueryInput = document.getElementById('searchQuery');
+
+            // Variabel untuk menyimpan semua data gambar
+            let allImages = [];
+
+            // Fungsi untuk menampilkan pesan status
+            const showStatus = (message, type = 'info') => {
+                statusMessage.textContent = message;
+                statusMessage.className = `mt-4 text-sm text-center font-medium ${
+                    type === 'error' ? 'text-red-500' :
+                    type === 'success' ? 'text-green-500' : 'text-gray-500 dark:text-gray-400'
+                }`;
+            };
+
+            // Fungsi untuk mengunduh file dari URL
+            const downloadFile = (url) => {
+                const link = document.createElement('a');
+                link.href = url;
+                // Mengambil nama file dari URL atau menggunakan nama default
+                const fileName = url.substring(url.lastIndexOf('/') + 1) || 'image.jpg';
+                link.download = fileName; // Memberi nama file yang diunduh
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
+            // Fungsi untuk merender daftar gambar berdasarkan array data
+            const renderImages = (imagesToRender) => {
+                imageList.innerHTML = ''; // Bersihkan daftar yang ada
+                imagesToRender.forEach(image => {
+                    const li = document.createElement('li');
+                    li.className = 'flex items-center space-x-3 bg-gray-100 dark:bg-gray-700 p-3 rounded-lg shadow-sm';
+                    
+                    const img = document.createElement('img');
+                    img.src = image.url;
+                    img.alt = 'Pratinjau Gambar';
+                    img.className = 'w-12 h-12 object-cover rounded-md flex-shrink-0';
+                    img.onerror = () => {
+                        img.src = `https://placehold.co/48x48/CCCCCC/000000?text=IMG`;
+                        img.alt = 'Gambar gagal dimuat';
+                    };
+
+                    const contentDiv = document.createElement('div');
+                    contentDiv.className = 'flex flex-col min-w-0 flex-1';
+
+                    const nameSpan = document.createElement('span');
+                    nameSpan.className = 'text-sm font-semibold truncate';
+                    nameSpan.textContent = image.name || 'Nama Tidak Ditemukan';
+
+                    // Mengubah elemen <a> menjadi elemen <button> untuk mengunduh
+                    const downloadButton = document.createElement('button');
+                    downloadButton.className = 'text-blue-600 dark:text-blue-400 hover:underline text-xs truncate';
+                    downloadButton.textContent = image.url;
+                    downloadButton.onclick = () => downloadFile(image.url); // Mengunduh file saat diklik
+
+                    contentDiv.appendChild(nameSpan);
+                    contentDiv.appendChild(downloadButton);
+                    li.appendChild(img);
+                    li.appendChild(contentDiv);
+                    imageList.appendChild(li);
+                });
+            };
+
+            // Event listener untuk tombol "Unduh Semua"
+            downloadAllBtn.addEventListener('click', () => {
+                const imageLinks = Array.from(imageList.querySelectorAll('button')).map(btn => btn.textContent);
+                if (imageLinks.length === 0) {
+                    showStatus('Tidak ada gambar untuk diunduh.', 'error');
+                    return;
+                }
+
+                showStatus(`Memulai pengunduhan ${imageLinks.length} gambar...`, 'info');
+                // Menggunakan delay untuk menghindari pemblokiran pop-up di browser
+                let delay = 0;
+                imageLinks.forEach(url => {
+                    setTimeout(() => downloadFile(url), delay);
+                    delay += 500; // Delay 500ms antar pengunduhan
+                });
+                showStatus(`Semua pengunduhan telah dimulai.`, 'success');
+            });
+
+            // Event listener untuk tombol "Muat Gambar"
+            loadBtn.addEventListener('click', async () => {
+                const url = sheetUrlInput.value;
+                if (!url) {
+                    showStatus('Mohon masukkan URL Google Sheets.', 'error');
+                    return;
+                }
+
+                showStatus('Memuat data dari Google Sheets...', 'info');
+                imageList.innerHTML = '';
+                resultsContainer.classList.add('hidden');
+                searchContainer.classList.add('hidden');
+                allImages = [];
+
+                try {
+                    // Ekstrak ID dari URL
+                    const matches = url.match(/\/d\/(.*?)\//);
+                    if (!matches || matches.length < 2) {
+                        throw new Error('URL Google Sheets tidak valid.');
+                    }
+                    const sheetId = matches[1];
+                    
+                    // Buat URL ekspor CSV. `gid=0` mengacu pada sheet pertama.
+                    const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=0`;
+
+                    // Lakukan fetch data
+                    const response = await fetch(csvUrl);
+                    if (!response.ok) {
+                        throw new Error(`Gagal memuat data. Pastikan Google Sheets dibagikan secara publik.`);
+                    }
+
+                    const csvText = await response.text();
+                    
+                    // Pisahkan baris
+                    const rows = csvText.trim().split('\n');
+                    
+                    // Parse baris dan simpan data
+                    let foundImages = false;
+                    rows.forEach(row => {
+                        // Menggunakan regex untuk menangani koma dalam tanda kutip
+                        const columns = row.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g);
+                        if (!columns || columns.length === 0) return;
+
+                        const imageUrl = columns[0].replace(/^"|"$/g, '').trim();
+                        const imageName = columns.length > 1 ? columns[1].replace(/^"|"$/g, '').trim() : '';
+                        
+                        // Cek apakah kolom pertama berisi URL gambar yang valid
+                        if (imageUrl.match(/\.(jpeg|jpg|gif|png|webp|svg)$/i)) {
+                            foundImages = true;
+                            allImages.push({ url: imageUrl, name: imageName });
+                        }
+                    });
+
+                    if (foundImages) {
+                        renderImages(allImages);
+                        resultsContainer.classList.remove('hidden');
+                        searchContainer.classList.remove('hidden');
+                        showStatus('Tautan gambar berhasil dimuat.', 'success');
+                    } else {
+                        showStatus('Tidak ada tautan gambar yang valid ditemukan di kolom pertama.', 'error');
+                    }
+
+                } catch (error) {
+                    showStatus(`Terjadi kesalahan: ${error.message}`, 'error');
+                    console.error('Error:', error);
+                }
+            });
+
+            // Event listener untuk input pencarian
+            searchQueryInput.addEventListener('keyup', () => {
+                const query = searchQueryInput.value.toLowerCase();
+                const filteredImages = allImages.filter(image => 
+                    (image.name && image.name.toLowerCase().includes(query)) ||
+                    (image.url && image.url.toLowerCase().includes(query))
+                );
+                renderImages(filteredImages);
+            });
+        });
+    </script>
+</body>
+</html>
+
